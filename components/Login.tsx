@@ -1,0 +1,380 @@
+
+import React, { useState } from 'react';
+import { ShieldCheck, User, Lock, ArrowRight, Settings, ShieldAlert, Fingerprint, Smartphone } from 'lucide-react';
+
+interface LoginProps {
+  onVoterLogin: (epic: string, aadhaar: string, pin: string) => void;
+  onAdminLogin: (user: string, pass: string) => void;
+  onGoToRegister: () => void;
+}
+
+const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegister }) => {
+  const [mode, setMode] = useState<'VOTER' | 'ADMIN'>('VOTER');
+  const [voterData, setVoterData] = useState({ epic: '', aadhaar: '', pin: '' });
+  const [adminData, setAdminData] = useState({ user: '', pass: '' });
+  const [error, setError] = useState('');
+  const [useOtpLogin, setUseOtpLogin] = useState(false);
+  const [otpStep, setOtpStep] = useState<'AADHAAR' | 'OTP'>('AADHAAR');
+  const [otpAadhaar, setOtpAadhaar] = useState('');
+  const [otp, setOtp] = useState('');
+  const [transactionId, setTransactionId] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [maskedMobile, setMaskedMobile] = useState('');
+
+  const handleVoterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (voterData.epic.length < 5 || voterData.aadhaar.length !== 12 || voterData.pin.length < 4) {
+      setError('Please enter valid EPIC Number, 12-digit Aadhaar, and Security PIN');
+      return;
+    }
+    onVoterLogin(voterData.epic, voterData.aadhaar, voterData.pin);
+  };
+
+  const handleAdminSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminData.user && adminData.pass) {
+      onAdminLogin(adminData.user, adminData.pass);
+    } else {
+      setError('Please enter both Admin ID and Passkey');
+    }
+  };
+
+  const requestOtpLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsVerifying(true);
+    setError('');
+
+    if (otpAadhaar.length !== 12) {
+      setError('Please enter a valid 12-digit Aadhaar number');
+      setIsVerifying(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/aadhaar/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aadhaarNumber: otpAadhaar,
+          purpose: 'login'
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setTransactionId(data.transactionId || '');
+        setMaskedMobile(data.maskedMobile || '');
+        setOtpStep('OTP');
+        if (data.otp) {
+          window.alert(`Your OTP is: ${data.otp}`);
+        }
+      } else {
+        setError(data.message || 'Failed to request OTP. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error requesting OTP:', err);
+      setError('Failed to connect to verification service. Please try again.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const verifyOtpLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsVerifying(true);
+    setError('');
+
+    if (!otp || otp.length !== 6) {
+      setError('Please enter a valid 6-digit OTP');
+      setIsVerifying(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/aadhaar/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId,
+          otp,
+          aadhaarNumber: otpAadhaar
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // OTP verified - proceed with login
+        // For OTP-only login, we'll use the Aadhaar as identifier
+        onVoterLogin('OTP_AUTH', otpAadhaar, '0000');
+      } else {
+        const message = data.message || 'Invalid OTP. Please try again.';
+        setError(message);
+      }
+    } catch (err) {
+      console.error('Error verifying OTP:', err);
+      setError('Failed to verify OTP. Please check your connection and try again.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  return (
+    <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-500 ${mode === 'VOTER' ? 'gradient-bg' : 'bg-slate-900'}`}>
+      <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl w-full max-w-md border border-white/20 overflow-hidden">
+        
+        {/* Tab Switcher */}
+        <div className="flex border-b">
+          <button 
+            onClick={() => { setMode('VOTER'); setError(''); }}
+            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${
+              mode === 'VOTER' ? 'text-[#FF9933] border-b-4 border-[#FF9933]' : 'text-gray-400 bg-gray-50'
+            }`}
+          >
+            Citizen Login
+          </button>
+          <button 
+            onClick={() => { setMode('ADMIN'); setError(''); }}
+            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${
+              mode === 'ADMIN' ? 'text-[#000080] border-b-4 border-[#000080]' : 'text-gray-400 bg-gray-50'
+            }`}
+          >
+            Official Login
+          </button>
+        </div>
+
+        <div className="p-8">
+          <div className="text-center mb-8">
+            <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-4 transition-colors ${mode === 'VOTER' ? 'bg-orange-100' : 'bg-blue-100'}`}>
+              {mode === 'VOTER' ? (
+                <ShieldCheck className="text-[#FF9933]" size={40} />
+              ) : (
+                <Settings className="text-[#000080]" size={40} />
+              )}
+            </div>
+            <h2 className="text-3xl font-bold text-gray-800">BharatVote</h2>
+            <p className="text-gray-500 mt-2">
+              {mode === 'VOTER' ? 'Secure Voter Authentication' : 'ECI Administrative Access'}
+            </p>
+          </div>
+
+          {mode === 'ADMIN' && (
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start space-x-2 mb-6">
+              <ShieldAlert size={16} className="text-amber-600 mt-0.5" />
+              <p className="text-[10px] text-amber-800 leading-tight">
+                Unauthorized access to the Election Command Center is a punishable offense under the IT Act.
+              </p>
+            </div>
+          )}
+
+          {mode === 'VOTER' && !useOtpLogin && (
+            <div className="bg-blue-50 border border-blue-200 p-2 rounded-lg flex items-center justify-between mb-4">
+              <p className="text-xs text-blue-700 font-medium">🔐 Enhanced security available</p>
+              <button
+                type="button"
+                onClick={() => setUseOtpLogin(true)}
+                className="text-xs text-blue-600 font-bold uppercase hover:underline"
+              >
+                Use OTP Login
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={useOtpLogin && mode === 'VOTER' ? (otpStep === 'AADHAAR' ? requestOtpLogin : verifyOtpLogin) : (mode === 'VOTER' ? handleVoterSubmit : handleAdminSubmit)} className="space-y-6">
+            {useOtpLogin && otpStep === 'OTP' && (
+              <div className="mb-4">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-sm text-emerald-900">
+                  OTP generated and shown in a popup. Enter it in the field below.
+                </div>
+              </div>
+            )}
+            {!useOtpLogin || mode === 'ADMIN' ? (
+              <>
+                {mode === 'VOTER' ? (
+                  <>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">EPIC Number</label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="text"
+                          value={voterData.epic}
+                          onChange={(e) => setVoterData({ ...voterData, epic: e.target.value.toUpperCase() })}
+                          placeholder="EPIC1234567"
+                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all uppercase"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aadhaar Number</label>
+                      <div className="relative">
+                        <Fingerprint className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="text"
+                          value={voterData.aadhaar}
+                          onChange={(e) => setVoterData({ ...voterData, aadhaar: e.target.value.replace(/\D/g, '') })}
+                          placeholder="12-digit Aadhaar"
+                          maxLength={12}
+                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Security PIN</label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="password"
+                          value={voterData.pin}
+                          onChange={(e) => setVoterData({ ...voterData, pin: e.target.value })}
+                          placeholder="••••"
+                          maxLength={4}
+                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Admin ID</label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="text"
+                          value={adminData.user}
+                          onChange={(e) => setAdminData({ ...adminData, user: e.target.value })}
+                          placeholder="official_01"
+                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#000080] outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Secure Passkey</label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                          type="password"
+                          value={adminData.pass}
+                          onChange={(e) => setAdminData({ ...adminData, pass: e.target.value })}
+                          placeholder="••••••••"
+                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#000080] outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : otpStep === 'AADHAAR' ? (
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aadhaar Number</label>
+                <div className="relative">
+                  <Fingerprint className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    value={otpAadhaar}
+                    onChange={(e) => setOtpAadhaar(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter 12-digit Aadhaar"
+                    maxLength={12}
+                    disabled={isVerifying}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2">An OTP will be sent to your registered mobile number</p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Enter OTP</label>
+                  <div className="relative">
+                    <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input
+                      type="text"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                      placeholder="6-digit OTP"
+                      maxLength={6}
+                      disabled={isVerifying}
+                      className="w-full pl-10 pr-4 py-4 text-center text-2xl font-bold tracking-[0.5em] border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">OTP sent to {maskedMobile}</p>
+                </div>
+              </>
+            )}
+
+            {error && <p className="text-red-500 text-xs italic font-medium text-center">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={isVerifying}
+              className={`w-full text-white font-bold py-4 rounded-xl flex items-center justify-center space-x-2 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                mode === 'VOTER' ? 'bg-[#138808] hover:bg-[#0f6e06]' : 'bg-[#000080] hover:bg-blue-900'
+              }`}
+            >
+              <span>
+                {isVerifying 
+                  ? 'Processing...' 
+                  : useOtpLogin && otpStep === 'AADHAAR'
+                  ? 'Send OTP'
+                  : useOtpLogin && otpStep === 'OTP'
+                  ? 'Verify & Enter'
+                  : mode === 'VOTER' ? 'Authorize & Enter' : 'Access Command Center'}
+              </span>
+              <ArrowRight size={20} />
+            </button>
+          </form>
+
+          {useOtpLogin && mode === 'VOTER' && (
+            <div className="mt-4 text-center">
+              <button 
+                onClick={() => {
+                  setUseOtpLogin(false);
+                  setOtpStep('AADHAAR');
+                  setOtp('');
+                  setOtpAadhaar('');
+                  setError('');
+                }}
+                className="text-xs text-gray-500 hover:text-gray-800 font-bold uppercase tracking-widest transition-colors"
+              >
+                Use Traditional Login
+              </button>
+            </div>
+          )}
+
+          <div className="mt-6 text-center">
+            <button 
+              onClick={onGoToRegister}
+              className="text-xs text-gray-500 hover:text-gray-800 font-bold uppercase tracking-widest transition-colors"
+            >
+              New to BharatVote? Register Here
+            </button>
+          </div>
+
+          {mode === 'VOTER' && (
+            <div className="mt-8 pt-6 border-t border-gray-100">
+              <p className="text-center text-xs text-gray-400 uppercase tracking-widest font-semibold mb-4">Secured Verification</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col items-center text-[#FF9933]">
+                  <div className="w-10 h-10 bg-orange-50 rounded-full flex items-center justify-center mb-1">🆔</div>
+                  <span className="text-[10px]">UIDAI Sync</span>
+                </div>
+                 <div className="flex flex-col items-center text-[#138808]">
+                  <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mb-1">📱</div>
+                  <span className="text-[10px]">OTP Sync</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <p className="mt-8 text-center text-[10px] text-gray-400">
+            System uptime 99.9%. Encrypted with E2EE protocol.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Login;
