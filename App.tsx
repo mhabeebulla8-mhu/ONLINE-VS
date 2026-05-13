@@ -8,9 +8,9 @@ import AdminDashboard from './components/AdminDashboard';
 import VotingBallot from './components/VotingBallot';
 import ResultsDashboard from './components/ResultsDashboard';
 import AIAssistant from './components/AIAssistant';
-import { ViewState, Voter, Candidate, Admin, AuditLog, ElectionStatus, ElectionSchedule } from './types';
+import { ViewState, Voter, Candidate, Admin, AuditLog, ElectionStatus, ElectionSchedule, ConstituencyStat } from './types';
 import { ELECTION_SCHEDULE } from './constants';
-import { CheckCircle, Info, Vote, History, MapPin, Award, Sparkles } from 'lucide-react';
+import { CheckCircle, Info, Vote, History, MapPin, Award, Sparkles, MessageSquare } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('WELCOME');
@@ -19,6 +19,11 @@ const App: React.FC = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [results, setResults] = useState<{ name: string; votes: number; party: string }[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [stats, setStats] = useState<{ totalRegisteredVoters: number; totalVotesCast: number; constituencyStats: ConstituencyStat[] }>({ 
+    totalRegisteredVoters: 0, 
+    totalVotesCast: 0,
+    constituencyStats: []
+  });
 
   const getElectionStatus = (schedule: ElectionSchedule): ElectionStatus => {
     const now = new Date();
@@ -69,9 +74,24 @@ const App: React.FC = () => {
     }
   };
 
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/stats');
+      const data = await res.json();
+      setStats({
+        totalRegisteredVoters: data.totalRegisteredVoters,
+        totalVotesCast: data.totalVotesCast,
+        constituencyStats: data.constituencyStats || []
+      });
+    } catch (error) {
+      console.error("Failed to fetch stats", error);
+    }
+  };
+
   useEffect(() => {
     fetchCandidates();
     fetchLogs();
+    fetchStats();
   }, []);
 
   const addLog = async (action: string, details: string, severity: 'info' | 'warning' | 'critical' = 'info') => {
@@ -210,6 +230,7 @@ const App: React.FC = () => {
           addLog('BALLOT_CAST', `Ballot successfully recorded.`, 'info');
           setCurrentUser({ ...currentUser, hasVoted: true });
           fetchCandidates(); // Refresh results
+          fetchStats(); // Refresh stats
           setCurrentView('RESULTS');
         } else {
           alert("Voting failed");
@@ -277,12 +298,13 @@ const App: React.FC = () => {
 
   return (
     <Layout 
-      currentView={currentView} 
-      setView={setCurrentView} 
-      voterName={currentUser?.name}
-      onLogout={handleLogout}
-      isAdmin={!!currentAdmin}
-    >
+        currentView={currentView} 
+        setView={setCurrentView} 
+        voterName={currentUser?.name}
+        onLogout={handleLogout}
+        isAdmin={!!currentAdmin}
+        stats={stats}
+      >
       {currentView === 'DASHBOARD' && currentUser && (
         <div className="space-y-8 animate-fadeIn">
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden">
@@ -373,6 +395,61 @@ const App: React.FC = () => {
               </button>
             </div>
           )}
+
+          {/* Voter Information Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+              <div className="flex items-center space-x-2 mb-6">
+                <Info size={20} className="text-[#000080]" />
+                <h3 className="font-bold text-gray-800">Your Voting Guide</h3>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3 p-3 hover:bg-slate-50 rounded-2xl transition-colors cursor-pointer group">
+                  <div className="w-8 h-8 bg-blue-50 text-[#000080] rounded-lg flex items-center justify-center shrink-0">1</div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-800 group-hover:text-blue-600">Verify Candidate Profile</p>
+                    <p className="text-xs text-gray-500">Read manifestos and party backgrounds before deciding.</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3 p-3 hover:bg-slate-50 rounded-2xl transition-colors cursor-pointer group">
+                  <div className="w-8 h-8 bg-orange-50 text-[#FF9933] rounded-lg flex items-center justify-center shrink-0">2</div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-800 group-hover:text-[#FF9933]">OTP Verification</p>
+                    <p className="text-xs text-gray-500">Keep your registered mobile number handy for final confirmation.</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3 p-3 hover:bg-slate-50 rounded-2xl transition-colors cursor-pointer group">
+                  <div className="w-8 h-8 bg-green-50 text-[#138808] rounded-lg flex items-center justify-center shrink-0">3</div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-800 group-hover:text-[#138808]">Privacy First</p>
+                    <p className="text-xs text-gray-500">Your vote is encrypted and anonymous. No one can see who you voted for.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-8 rounded-3xl text-white relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-4 opacity-20 transform group-hover:scale-110 transition-transform">
+                <Sparkles size={80} />
+              </div>
+              <div className="relative z-10">
+                <h3 className="text-xl font-bold mb-4 flex items-center space-x-2">
+                  <Sparkles size={20} className="text-amber-400" />
+                  <span>AI Election Insights</span>
+                </h3>
+                <p className="text-slate-300 text-sm leading-relaxed mb-6">
+                  Get personalized insights about candidates in {currentUser.constituency} and overall election trends powered by Gemini AI.
+                </p>
+                <button 
+                  onClick={() => setCurrentView('AI_ASSISTANT')}
+                  className="bg-white/10 hover:bg-white/20 border border-white/20 px-6 py-3 rounded-xl text-sm font-bold transition-all flex items-center space-x-2"
+                >
+                  <span>Launch Assistant</span>
+                  <MessageSquare size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -381,9 +458,10 @@ const App: React.FC = () => {
           candidates={candidates}
           onAddCandidate={handleAddCandidate}
           onDeleteCandidate={handleDeleteCandidate}
-          totalVoters={1250000}
-          votesCast={results.reduce((acc, curr) => acc + curr.votes, 0)}
+          totalVoters={stats.totalRegisteredVoters}
+          votesCast={stats.totalVotesCast}
           logs={logs}
+          constituencyStats={stats.constituencyStats}
         />
       )}
 
@@ -402,6 +480,7 @@ const App: React.FC = () => {
           data={results} 
           schedule={ELECTION_SCHEDULE}
           electionStatus={electionStatus}
+          candidates={candidates}
         />
       )}
       {currentView === 'AI_ASSISTANT' && <AIAssistant />}

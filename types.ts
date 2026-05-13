@@ -51,6 +51,12 @@ export interface AuditLog {
   severity: 'info' | 'warning' | 'critical';
 }
 
+export interface ConstituencyStat {
+  constituency: string;
+  total: number;
+  voted: number;
+}
+
 export type ViewState = 'WELCOME' | 'LOGIN' | 'REGISTER' | 'DASHBOARD' | 'BALLOT' | 'VERIFICATION' | 'RESULTS' | 'AI_ASSISTANT' | 'ADMIN_LOGIN' | 'ADMIN_DASHBOARD';
 
 export interface ChatMessage {

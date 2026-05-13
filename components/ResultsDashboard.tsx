@@ -1,22 +1,44 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { ElectionSchedule, ElectionStatus } from '../types';
+import { ElectionSchedule, ElectionStatus, Candidate } from '../types';
+import { CONSTITUENCIES } from '../constants';
 
 interface ResultsDashboardProps {
   data: { name: string; votes: number; party: string }[];
   schedule: ElectionSchedule;
   electionStatus: ElectionStatus;
+  candidates: Candidate[];
 }
 
-const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, electionStatus }) => {
+const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, electionStatus, candidates }) => {
+  const [selectedConstituency, setSelectedConstituency] = useState<string>('All');
   const COLORS = ['#FF9933', '#138808', '#000080', '#FFCC00', '#666666'];
 
-  const totalVotes = data.reduce((acc, curr) => acc + curr.votes, 0);
+  const filteredCandidates = selectedConstituency === 'All' 
+    ? data 
+    : data.filter(d => candidates.find(c => c.name === d.name)?.constituency === selectedConstituency);
+
+  const totalVotes = filteredCandidates.reduce((acc, curr) => acc + curr.votes, 0);
   const resultsLabel = electionStatus.isResultsPublished ? 'Official results are published' : 'Live tally results';
 
   return (
     <div className="space-y-8 animate-fadeIn">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h2 className="text-3xl font-black text-gray-800 tracking-tight">Election Results</h2>
+        <div className="flex items-center space-x-2 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-widest pl-2">Filter by Constituency:</span>
+          <select 
+            value={selectedConstituency}
+            onChange={(e) => setSelectedConstituency(e.target.value)}
+            className="bg-gray-50 border-none rounded-xl text-sm font-bold text-[#000080] focus:ring-0 cursor-pointer"
+          >
+            <option value="All">All Regions</option>
+            {CONSTITUENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <p className="text-xs uppercase tracking-[0.35em] text-gray-400 font-bold">Election</p>
@@ -46,7 +68,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, ele
           <h3 className="text-lg font-bold text-gray-800 mb-6">Vote Count by Candidate</h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data}>
+              <BarChart data={filteredCandidates}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
                 <YAxis />
@@ -55,7 +77,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, ele
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Bar dataKey="votes" radius={[4, 4, 0, 0]}>
-                  {data.map((entry, index) => (
+                  {filteredCandidates.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Bar>
@@ -71,7 +93,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, ele
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={data}
+                  data={filteredCandidates}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -79,7 +101,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, ele
                   paddingAngle={5}
                   dataKey="votes"
                 >
-                  {data.map((entry, index) => (
+                  {filteredCandidates.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
@@ -88,7 +110,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, ele
             </ResponsiveContainer>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-4">
-            {data.map((item, idx) => (
+            {filteredCandidates.map((item, idx) => (
               <div key={item.name} className="flex items-center space-x-2">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
                 <span className="text-xs text-gray-600 truncate">{item.name} ({item.party})</span>
@@ -112,9 +134,9 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, ele
               </tr>
             </thead>
             <tbody className="divide-y">
-              {[...data].sort((a, b) => b.votes - a.votes).map((item) => {
-                const total = data.reduce((acc, curr) => acc + curr.votes, 0);
-                const percentage = ((item.votes / total) * 100).toFixed(1);
+              {[...filteredCandidates].sort((a, b) => b.votes - a.votes).map((item) => {
+                const total = filteredCandidates.reduce((acc, curr) => acc + curr.votes, 0);
+                const percentage = total > 0 ? ((item.votes / total) * 100).toFixed(1) : '0.0';
                 return (
                   <tr key={item.name} className="hover:bg-gray-50 transition-colors">
                     <td className="py-4 font-semibold text-gray-800">{item.name}</td>

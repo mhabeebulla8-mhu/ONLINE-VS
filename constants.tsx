@@ -10,12 +10,17 @@ export const CONSTITUENCIES = [
   "Chennai South"
 ];
 
+const now = new Date();
+const start = new Date(now.getTime() - 3600000); // 1 hour ago
+const end = new Date(now.getTime() + 86400000); // 24 hours from now
+const results = new Date(now.getTime() + 172800000); // 48 hours from now
+
 export const ELECTION_SCHEDULE: ElectionSchedule = {
   name: "General Assembly 2026",
   description: "Multi-constituency general election for major metropolitan and regional seats.",
-  startAt: "2026-04-14T08:00:00.000Z",
-  endAt: "2026-04-14T18:00:00.000Z",
-  resultsPublishAt: "2026-04-14T20:00:00.000Z",
+  startAt: start.toISOString(),
+  endAt: end.toISOString(),
+  resultsPublishAt: results.toISOString(),
   constituencies: CONSTITUENCIES
 };
 

@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   console.log("Starting server initialization...");
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   app.use(express.json());
 
@@ -74,10 +74,18 @@ async function startServer() {
   // Seed initial admin if empty
   const adminCount = await db.get("SELECT COUNT(*) as count FROM admins");
   if (adminCount.count === 0) {
+    console.log("Seeding default admin...");
     await db.run(
       "INSERT INTO admins (id, username, password, role) VALUES (?, ?, ?, ?)",
       ['admin_1', 'admin', 'admin123', 'SYSTEM_ADMIN']
     );
+  } else {
+    // Check for corrupted admin data (with \r\n) and fix it
+    const corruptedAdmin = await db.get("SELECT * FROM admins WHERE username = 'admin' AND password LIKE '%\r\n%'");
+    if (corruptedAdmin) {
+      console.log("Cleaning up corrupted admin credentials...");
+      await db.run("UPDATE admins SET id = 'admin_1', password = 'admin123' WHERE username = 'admin'");
+    }
   }
 
   // Seed initial candidates if empty
@@ -189,26 +197,79 @@ async function startServer() {
 
   app.post("/api/vote", async (req, res) => {
     const { voterEpic, candidateId } = req.body;
-    const voter = await db.get("SELECT hasVoted FROM voters WHERE epicNumber = ?", [voterEpic]);
-    if (voter && !voter.hasVoted) {
+    
+    // Fetch voter and candidate details to verify constituency match
+    const voter = await db.get("SELECT hasVoted, constituency FROM voters WHERE epicNumber = ?", [voterEpic]);
+    const candidate = await db.get("SELECT constituency FROM candidates WHERE id = ?", [candidateId]);
+
+    if (!voter) {
+      return res.status(404).json({ error: "Voter not found" });
+    }
+
+    if (!candidate) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+
+    if (voter.hasVoted) {
+      return res.status(400).json({ error: "Voter has already cast their ballot" });
+    }
+
+    if (voter.constituency !== candidate.constituency) {
+      const logId = Math.random().toString(36).substr(2, 9);
+      await db.run(
+        "INSERT INTO audit_logs (id, timestamp, action, details, severity) VALUES (?, ?, ?, ?, ?)",
+        [logId, new Date().toISOString(), "VOTE_FRAUD_ATTEMPT", `Voter ${voterEpic} attempted to vote for candidate ${candidateId} in a different constituency (${candidate.constituency} vs ${voter.constituency})`, "critical"]
+      );
+      return res.status(403).json({ error: "You can only vote for candidates in your registered constituency" });
+    }
+
+    try {
       await db.run("UPDATE candidates SET votes = votes + 1 WHERE id = ?", [candidateId]);
       await db.run("UPDATE voters SET hasVoted = 1 WHERE epicNumber = ?", [voterEpic]);
       
       const logId = Math.random().toString(36).substr(2, 9);
       await db.run(
         "INSERT INTO audit_logs (id, timestamp, action, details, severity) VALUES (?, ?, ?, ?, ?)",
-        [logId, new Date().toISOString(), "VOTE_CAST", `Vote cast by ${voterEpic}`, "info"]
+        [logId, new Date().toISOString(), "VOTE_CAST", `Vote successfully cast by ${voterEpic} for candidate ${candidateId}`, "info"]
       );
       
       res.json({ success: true });
-    } else {
-      res.status(400).json({ error: "Already voted or invalid voter" });
+    } catch (error) {
+      console.error("Voting error:", error);
+      res.status(500).json({ error: "Internal server error during voting process" });
     }
   });
 
   app.get("/api/logs", async (req, res) => {
     const logs = await db.all("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 50");
     res.json(logs);
+  });
+
+  app.get("/api/stats", async (req, res) => {
+    try {
+      const votersCount = await db.get("SELECT COUNT(*) as count FROM voters");
+      const votedCount = await db.get("SELECT COUNT(*) as count FROM voters WHERE hasVoted = 1");
+      const candidateVotes = await db.get("SELECT SUM(votes) as count FROM candidates");
+      
+      const constituencyStats = await db.all(`
+        SELECT 
+          constituency, 
+          COUNT(*) as total,
+          SUM(CASE WHEN hasVoted = 1 THEN 1 ELSE 0 END) as voted
+        FROM voters
+        GROUP BY constituency
+      `);
+      
+      res.json({
+        totalRegisteredVoters: votersCount.count,
+        totalVotesCast: votedCount.count,
+        candidateVotesSum: candidateVotes.count || 0,
+        constituencyStats
+      });
+    } catch (error) {
+      console.error("Failed to fetch stats:", error);
+      res.status(500).json({ error: "Failed to fetch statistics" });
+    }
   });
 
   // ===== AADHAAR OTP VERIFICATION ENDPOINTS =====

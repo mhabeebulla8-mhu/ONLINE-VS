@@ -10,9 +10,10 @@ interface LayoutProps {
   voterName?: string;
   onLogout: () => void;
   isAdmin?: boolean;
+  stats?: { totalRegisteredVoters: number; totalVotesCast: number };
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, voterName, onLogout, isAdmin }) => {
+const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, voterName, onLogout, isAdmin, stats }) => {
   const voterNavItems = [
     { id: 'DASHBOARD', icon: <Home size={20} />, label: 'Home' },
     { id: 'BALLOT', icon: <Fingerprint size={20} />, label: 'Vote' },
@@ -84,6 +85,28 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, voterNa
         </div>
       </header>
 
+      {/* Live Election Ticker */}
+      {stats && (
+        <div className="bg-slate-100 border-b overflow-hidden py-1.5 whitespace-nowrap relative">
+          <div className="flex animate-marquee items-center space-x-8">
+            <div className="flex items-center space-x-2 text-xs font-bold text-slate-600">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              <span>LIVE ELECTION UPDATES:</span>
+            </div>
+            <div className="flex items-center space-x-4 text-xs font-medium text-slate-500">
+              <span>Total Registered: <span className="text-[#000080] font-bold">{stats.totalRegisteredVoters}</span></span>
+              <span className="text-slate-300">|</span>
+              <span>Votes Cast: <span className="text-[#138808] font-bold">{stats.totalVotesCast}</span></span>
+              <span className="text-slate-300">|</span>
+              <span>Current Turnout: <span className="text-[#FF9933] font-bold">{stats.totalRegisteredVoters > 0 ? ((stats.totalVotesCast / stats.totalRegisteredVoters) * 100).toFixed(1) : '0.0'}%</span></span>
+              <span className="text-slate-300">|</span>
+              <span>Next Phase: <span className="font-bold">Results Declaration</span></span>
+            </div>
+            {/* Duplicate for seamless loop if needed, but simple marquee works too */}
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {children}
@@ -109,8 +132,16 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, voterNa
 
       <footer className="bg-gray-100 border-t py-8 pb-24 md:pb-8">
         <div className="max-w-7xl mx-auto px-4 text-center">
+          <div className="flex justify-center items-center space-x-4 mb-4">
+            <div className="h-px bg-gray-300 w-12"></div>
+            <div className="flex items-center space-x-2">
+              <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center text-[10px]">🇮🇳</div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Digital India Initiative</span>
+            </div>
+            <div className="h-px bg-gray-300 w-12"></div>
+          </div>
           <p className="text-sm text-gray-500">
-            © 2024 Election Commission of India. Strictly for educational demonstration.
+            © 2026 Election Commission of India. Strictly for educational demonstration.
           </p>
           <div className="flex justify-center space-x-4 mt-4 text-xs text-gray-400">
             <a href="#" className="hover:text-blue-600">Privacy Policy</a>

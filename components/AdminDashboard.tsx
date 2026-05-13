@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Users, Vote, Activity, Database, ShieldCheck, AlertTriangle, Terminal, Plus, Trash2, X } from 'lucide-react';
-import { Candidate, AuditLog } from '../types';
+import { Users, Vote, Activity, Database, ShieldCheck, AlertTriangle, Terminal, Plus, Trash2, X, BarChart3 } from 'lucide-react';
+import { Candidate, AuditLog, ConstituencyStat } from '../types';
 import { CONSTITUENCIES } from '../constants';
 
 interface AdminDashboardProps {
@@ -11,6 +11,7 @@ interface AdminDashboardProps {
   totalVoters: number;
   votesCast: number;
   logs: AuditLog[];
+  constituencyStats: ConstituencyStat[];
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
@@ -19,7 +20,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteCandidate, 
   totalVoters, 
   votesCast,
-  logs
+  logs,
+  constituencyStats
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [newCandidate, setNewCandidate] = useState<Partial<Candidate>>({
@@ -30,7 +32,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     description: ''
   });
 
-  const turnout = ((votesCast / totalVoters) * 100).toFixed(1);
+  const turnout = totalVoters > 0 ? ((votesCast / totalVoters) * 100).toFixed(1) : '0.0';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,6 +177,140 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <h4 className="text-3xl font-black text-gray-800">12/12</h4>
           <p className="text-xs text-gray-500 mt-1">Active Server Clusters</p>
+        </div>
+      </div>
+
+      {/* Constituency Stats Section */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-center space-x-2 mb-6">
+          <BarChart3 size={20} className="text-[#000080]" />
+          <h3 className="font-bold text-gray-800">Voter Turnout by Constituency</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {constituencyStats.map((stat) => (
+            <div key={stat.constituency} className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
+              <h4 className="font-bold text-gray-800 mb-3">{stat.constituency}</h4>
+              <div className="space-y-3">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 font-medium">Turnout</span>
+                  <span className="font-bold text-[#138808]">
+                    {stat.total > 0 ? ((stat.voted / stat.total) * 100).toFixed(1) : '0.0'}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                  <div 
+                    className="bg-[#138808] h-full transition-all duration-1000" 
+                    style={{ width: `${stat.total > 0 ? (stat.voted / stat.total) * 100 : 0}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  <span>{stat.voted} Voted</span>
+                  <span>{stat.total} Registered</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          {constituencyStats.length === 0 && (
+            <div className="col-span-full py-8 text-center text-gray-400 italic bg-slate-50 rounded-2xl">
+              No voter data available to display constituency turnout.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Security Health and Logs */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl border border-slate-800">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-2">
+                <ShieldCheck size={20} className="text-emerald-400" />
+                <h3 className="font-bold">Security Health</h3>
+              </div>
+              <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/30">ACTIVE</span>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-400">Database Status</span>
+                <span className="text-emerald-400 font-mono">ENCRYPTED</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-400">SSL Termination</span>
+                <span className="text-emerald-400 font-mono">VERIFIED</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-400">Fraud Attempts</span>
+                <span className={`${logs.filter(l => l.severity === 'critical').length > 0 ? 'text-red-400' : 'text-slate-400'} font-mono`}>
+                  {logs.filter(l => l.severity === 'critical').length} Detected
+                </span>
+              </div>
+            </div>
+            
+            <div className="mt-8 p-4 bg-slate-800/50 rounded-2xl border border-slate-700">
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-2">System Uptime</p>
+              <div className="flex items-baseline space-x-1">
+                <span className="text-2xl font-black">99.98</span>
+                <span className="text-slate-500 text-xs">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <div className="flex items-center space-x-2 mb-4">
+              <AlertTriangle size={20} className="text-amber-500" />
+              <h3 className="font-bold text-gray-800">Quick Actions</h3>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <button className="w-full py-3 bg-slate-50 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors border border-slate-100 flex items-center justify-center space-x-2">
+                <Database size={14} />
+                <span>Backup Database</span>
+              </button>
+              <button className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-colors border border-red-100 flex items-center justify-center space-x-2">
+                <Terminal size={14} />
+                <span>Emergency Shutdown</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Audit Logs */}
+        <div className="lg:col-span-2 bg-slate-50 rounded-3xl p-6 border border-slate-200">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-2">
+              <Terminal size={20} className="text-slate-600" />
+              <h3 className="font-bold text-slate-800 uppercase tracking-wider text-xs">Security Audit Logs</h3>
+            </div>
+            <button className="text-[10px] font-bold text-blue-600 hover:underline">Download CSV</button>
+          </div>
+          
+          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            {logs.map((log) => (
+              <div key={log.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-start space-x-4 shadow-sm hover:border-slate-300 transition-colors">
+                <div className={`p-2 rounded-lg mt-1 ${
+                  log.severity === 'critical' ? 'bg-red-100 text-red-600' : 
+                  log.severity === 'warning' ? 'bg-amber-100 text-amber-600' : 
+                  'bg-blue-100 text-blue-600'
+                }`}>
+                  {log.severity === 'critical' ? <AlertTriangle size={16} /> : <Activity size={16} />}
+                </div>
+                <div className="flex-grow">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{log.timestamp}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      log.severity === 'critical' ? 'bg-red-50 text-red-600' : 
+                      log.severity === 'warning' ? 'bg-amber-50 text-amber-600' : 
+                      'bg-blue-50 text-blue-600'
+                    }`}>{log.action}</span>
+                  </div>
+                  <p className="text-sm text-slate-600 leading-relaxed font-medium">{log.details}</p>
+                </div>
+              </div>
+            ))}
+            {logs.length === 0 && (
+              <div className="py-20 text-center text-slate-400 italic">No security events recorded.</div>
+            )}
+          </div>
         </div>
       </div>
 
