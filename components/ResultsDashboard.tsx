@@ -9,20 +9,43 @@ interface ResultsDashboardProps {
   schedule: ElectionSchedule;
   electionStatus: ElectionStatus;
   candidates: Candidate[];
+  isAdmin?: boolean;
 }
 
-const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, electionStatus, candidates }) => {
+const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, electionStatus, candidates, isAdmin = false }) => {
   const [selectedConstituency, setSelectedConstituency] = useState<string>('All');
   const COLORS = ['#FF9933', '#138808', '#000080', '#FFCC00', '#666666'];
+
+  const showResults = isAdmin || electionStatus.isResultsPublished;
 
   const filteredCandidates = selectedConstituency === 'All' 
     ? data 
     : data.filter(d => candidates.find(c => c.name === d.name)?.constituency === selectedConstituency);
 
   const totalVotes = filteredCandidates.reduce((acc, curr) => acc + curr.votes, 0);
-  const resultsLabel = electionStatus.isResultsPublished ? 'Official results are published' : 'Live tally results';
+  const resultsLabel = electionStatus.isResultsPublished ? 'Official results are published' : (isAdmin ? 'Live internal tally' : 'Results pending publication');
 
-  return (
+  if (!showResults) {
+     return (
+       <div className="space-y-8 animate-fadeIn">
+         <div className="text-center py-16 bg-white rounded-3xl shadow-sm border border-gray-100 px-6">
+           <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6">
+             <span className="text-4xl">📊</span>
+           </div>
+           <h2 className="text-3xl font-black text-gray-800 tracking-tight mb-4">Results are being processed</h2>
+           <p className="text-gray-500 max-w-md mx-auto text-lg leading-relaxed">
+             Results will be published officially after election completion and administrative approval. 
+           </p>
+           <div className="mt-10 p-6 bg-slate-50 rounded-2xl border border-slate-100 max-w-lg mx-auto">
+             <p className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-2">Scheduled Publication</p>
+             <p className="text-2xl font-black text-[#000080]">{new Date(schedule.resultsPublishAt).toLocaleString()}</p>
+           </div>
+         </div>
+       </div>
+     );
+   }
+
+   return (
     <div className="space-y-8 animate-fadeIn">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h2 className="text-3xl font-black text-gray-800 tracking-tight">Election Results</h2>
@@ -47,7 +70,7 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, ele
         </div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <p className="text-xs uppercase tracking-[0.35em] text-gray-400 font-bold">Results publication</p>
-          <p className="text-sm text-gray-600 mt-3">Scheduled at {new Date(schedule.resultsPublishAt).toLocaleString()}</p>
+          <p className="text-sm text-slate-600 mt-3">Scheduled at {new Date(schedule.resultsPublishAt).toLocaleString()}</p>
           <p className="text-sm text-gray-500 mt-3">Status: <span className={`font-semibold ${electionStatus.isResultsPublished ? 'text-emerald-600' : 'text-amber-600'}`}>{electionStatus.phase.replace('_', ' ')}</span></p>
         </div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
@@ -165,3 +188,4 @@ const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, schedule, ele
 };
 
 export default ResultsDashboard;
+

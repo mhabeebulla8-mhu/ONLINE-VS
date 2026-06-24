@@ -28,19 +28,31 @@ export interface ElectionStatus {
   resultsIn: string;
 }
 
+export interface Election {
+  id: string;
+  name: string;
+  description: string;
+  startAt: string;
+  endAt: string;
+  isActive: boolean;
+  resultsPublished: boolean;
+}
+
 export interface Voter {
   epicNumber: string;
-  aadhaarNumber: string;
+  phoneNumber: string;
   name: string;
   constituency: string;
   hasVoted: boolean;
   isVerified: boolean;
+  phoneVerified: boolean;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
 }
 
 export interface Admin {
   id: string;
   username: string;
-  role: 'ELECTION_OFFICER' | 'SYSTEM_ADMIN';
+  role: 'ELECTION_OFFICER' | 'SYSTEM_ADMIN' | 'AUDITOR';
 }
 
 export interface AuditLog {

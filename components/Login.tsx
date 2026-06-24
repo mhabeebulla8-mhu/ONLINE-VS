@@ -1,33 +1,83 @@
 
 import React, { useState } from 'react';
-import { ShieldCheck, User, Lock, ArrowRight, Settings, ShieldAlert, Fingerprint, Smartphone } from 'lucide-react';
+import { ShieldCheck, User, Lock, ArrowRight, Settings, ShieldAlert, Smartphone } from 'lucide-react';
+import { sendOtp, verifyOtp } from '../services/authService';
 
 interface LoginProps {
-  onVoterLogin: (epic: string, aadhaar: string, pin: string) => void;
+  onVoterLogin: (identifier: string, pin: string) => void;
   onAdminLogin: (user: string, pass: string) => void;
   onGoToRegister: () => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegister }) => {
   const [mode, setMode] = useState<'VOTER' | 'ADMIN'>('VOTER');
-  const [voterData, setVoterData] = useState({ epic: '', aadhaar: '', pin: '' });
+  const [voterData, setVoterData] = useState({ identifier: '', pin: '' });
   const [adminData, setAdminData] = useState({ user: '', pass: '' });
   const [error, setError] = useState('');
   const [useOtpLogin, setUseOtpLogin] = useState(false);
-  const [otpStep, setOtpStep] = useState<'AADHAAR' | 'OTP'>('AADHAAR');
-  const [otpAadhaar, setOtpAadhaar] = useState('');
+  const [otpStep, setOtpStep] = useState<'PHONE' | 'OTP'>('PHONE');
+  const [otpPhone, setOtpPhone] = useState('');
   const [otp, setOtp] = useState('');
-  const [transactionId, setTransactionId] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
-  const [maskedMobile, setMaskedMobile] = useState('');
+  const [maskedPhone, setMaskedPhone] = useState('');
+  const [resendTimer, setResendTimer] = useState(0);
 
-  const handleVoterSubmit = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
+
+  const handleVoterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (voterData.epic.length < 5 || voterData.aadhaar.length !== 12 || voterData.pin.length < 4) {
-      setError('Please enter valid EPIC Number, 12-digit Aadhaar, and Security PIN');
+    if (voterData.identifier.length < 5 || voterData.pin.length < 4) {
+      setError('Please enter valid EPIC Number and Security PIN');
       return;
     }
-    onVoterLogin(voterData.epic, voterData.aadhaar, voterData.pin);
+    
+    setIsVerifying(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/login/voter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          identifier: voterData.identifier, 
+          pin: voterData.pin 
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.requiresOtp) {
+        const phoneNumber = data.phoneNumber;
+        if (!phoneNumber) {
+          setError('Mobile number not found for this account.');
+          setIsVerifying(false);
+          return;
+        }
+
+        await sendOtp(phoneNumber);
+        
+        setMaskedPhone(data.maskedPhone);
+        setOtpPhone(phoneNumber);
+        setUseOtpLogin(true);
+        setOtpStep('OTP');
+        setResendTimer(60);
+      } else {
+        setError(data.error || 'Invalid credentials');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err.message || 'Failed to connect to authentication service.');
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const handleAdminSubmit = (e: React.FormEvent) => {
@@ -36,47 +86,6 @@ const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegiste
       onAdminLogin(adminData.user, adminData.pass);
     } else {
       setError('Please enter both Admin ID and Passkey');
-    }
-  };
-
-  const requestOtpLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsVerifying(true);
-    setError('');
-
-    if (otpAadhaar.length !== 12) {
-      setError('Please enter a valid 12-digit Aadhaar number');
-      setIsVerifying(false);
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/aadhaar/request-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          aadhaarNumber: otpAadhaar,
-          purpose: 'login'
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setTransactionId(data.transactionId || '');
-        setMaskedMobile(data.maskedMobile || '');
-        setOtpStep('OTP');
-        if (data.otp) {
-          window.alert(`Your OTP is: ${data.otp}`);
-        }
-      } else {
-        setError(data.message || 'Failed to request OTP. Please try again.');
-      }
-    } catch (err) {
-      console.error('Error requesting OTP:', err);
-      setError('Failed to connect to verification service. Please try again.');
-    } finally {
-      setIsVerifying(false);
     }
   };
 
@@ -92,29 +101,26 @@ const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegiste
     }
 
     try {
-      const response = await fetch('/api/aadhaar/verify-otp', {
+      await verifyOtp(otpPhone, otp);
+      
+      const response = await fetch('/api/login/voter/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transactionId,
-          otp,
-          aadhaarNumber: otpAadhaar
+          phoneNumber: otpPhone
         })
       });
 
       const data = await response.json();
 
-      if (data.success) {
-        // OTP verified - proceed with login
-        // For OTP-only login, we'll use the Aadhaar as identifier
-        onVoterLogin('OTP_AUTH', otpAadhaar, '0000');
+      if (response.ok) {
+        onVoterLogin(data.epicNumber, 'OTP_VERIFIED'); 
       } else {
-        const message = data.message || 'Invalid OTP. Please try again.';
-        setError(message);
+        setError(data.error || 'Authentication failed. Please try again.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error verifying OTP:', err);
-      setError('Failed to verify OTP. Please check your connection and try again.');
+      setError(err.message || 'Failed to verify OTP. Please try again.');
     } finally {
       setIsVerifying(false);
     }
@@ -168,54 +174,21 @@ const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegiste
             </div>
           )}
 
-          {mode === 'VOTER' && !useOtpLogin && (
-            <div className="bg-blue-50 border border-blue-200 p-2 rounded-lg flex items-center justify-between mb-4">
-              <p className="text-xs text-blue-700 font-medium">🔐 Enhanced security available</p>
-              <button
-                type="button"
-                onClick={() => setUseOtpLogin(true)}
-                className="text-xs text-blue-600 font-bold uppercase hover:underline"
-              >
-                Use OTP Login
-              </button>
-            </div>
-          )}
-
-          <form onSubmit={useOtpLogin && mode === 'VOTER' ? (otpStep === 'AADHAAR' ? requestOtpLogin : verifyOtpLogin) : (mode === 'VOTER' ? handleVoterSubmit : handleAdminSubmit)} className="space-y-6">
-            {useOtpLogin && otpStep === 'OTP' && (
-              <div className="mb-4">
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-sm text-emerald-900">
-                  OTP generated and shown in a popup. Enter it in the field below.
-                </div>
-              </div>
-            )}
-            {!useOtpLogin || mode === 'ADMIN' ? (
+          <form onSubmit={mode === 'ADMIN' ? handleAdminSubmit : (otpStep === 'PHONE' ? handleVoterSubmit : verifyOtpLogin)} className="space-y-6">
+            {mode === 'VOTER' ? (
               <>
-                {mode === 'VOTER' ? (
+                {otpStep === 'PHONE' ? (
                   <>
                     <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">EPIC Number</label>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">EPIC Number / Mobile</label>
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                           type="text"
-                          value={voterData.epic}
-                          onChange={(e) => setVoterData({ ...voterData, epic: e.target.value.toUpperCase() })}
-                          placeholder="EPIC1234567"
-                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all uppercase"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aadhaar Number</label>
-                      <div className="relative">
-                        <Fingerprint className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input
-                          type="text"
-                          value={voterData.aadhaar}
-                          onChange={(e) => setVoterData({ ...voterData, aadhaar: e.target.value.replace(/\D/g, '') })}
-                          placeholder="12-digit Aadhaar"
-                          maxLength={12}
+                          value={voterData.identifier}
+                          onChange={(e) => setVoterData({ ...voterData, identifier: e.target.value })}
+                          placeholder="VOTE123456"
+                          disabled={isVerifying}
                           className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all"
                         />
                       </div>
@@ -227,79 +200,84 @@ const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegiste
                         <input
                           type="password"
                           value={voterData.pin}
-                          onChange={(e) => setVoterData({ ...voterData, pin: e.target.value })}
+                          onChange={(e) => setVoterData({ ...voterData, pin: e.target.value.replace(/\D/g, '') })}
                           placeholder="••••"
                           maxLength={4}
+                          disabled={isVerifying}
                           className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all"
                         />
                       </div>
                     </div>
                   </>
                 ) : (
-                  <>
-                    <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Admin ID</label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input
-                          type="text"
-                          value={adminData.user}
-                          onChange={(e) => setAdminData({ ...adminData, user: e.target.value })}
-                          placeholder="official_01"
-                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#000080] outline-none transition-all"
-                        />
-                      </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Enter OTP</label>
+                    <div className="relative">
+                      <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <input
+                        type="text"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                        placeholder="6-digit OTP"
+                        maxLength={6}
+                        disabled={isVerifying}
+                        className="w-full pl-10 pr-4 py-4 text-center text-2xl font-bold tracking-[0.5em] border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      />
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Secure Passkey</label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input
-                          type="password"
-                          value={adminData.pass}
-                          onChange={(e) => setAdminData({ ...adminData, pass: e.target.value })}
-                          placeholder="••••••••"
-                          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#000080] outline-none transition-all"
-                        />
-                      </div>
+                    <p className="text-xs text-gray-500 mt-2 text-center">OTP sent to {maskedPhone}</p>
+                    <div className="flex flex-col space-y-2 mt-4">
+                      <button 
+                        type="button"
+                        onClick={() => setOtpStep('PHONE')}
+                        className="text-[10px] text-[#FF9933] font-bold uppercase tracking-widest hover:underline"
+                      >
+                        Back to Login
+                      </button>
+
+                      {resendTimer > 0 ? (
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">
+                          Resend OTP in {resendTimer}s
+                        </p>
+                      ) : (
+                        <button 
+                          type="button"
+                          onClick={() => handleVoterSubmit(new Event('submit') as any)}
+                          className="text-[10px] text-[#FF9933] font-bold uppercase tracking-widest hover:underline"
+                        >
+                          Resend OTP
+                        </button>
+                      )}
                     </div>
-                  </>
+                  </div>
                 )}
               </>
-            ) : otpStep === 'AADHAAR' ? (
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Aadhaar Number</label>
-                <div className="relative">
-                  <Fingerprint className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input
-                    type="text"
-                    value={otpAadhaar}
-                    onChange={(e) => setOtpAadhaar(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Enter 12-digit Aadhaar"
-                    maxLength={12}
-                    disabled={isVerifying}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-2">An OTP will be sent to your registered mobile number</p>
-              </div>
             ) : (
               <>
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Enter OTP</label>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Admin ID</label>
                   <div className="relative">
-                    <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                     <input
                       type="text"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                      placeholder="6-digit OTP"
-                      maxLength={6}
-                      disabled={isVerifying}
-                      className="w-full pl-10 pr-4 py-4 text-center text-2xl font-bold tracking-[0.5em] border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF9933] outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      value={adminData.user}
+                      onChange={(e) => setAdminData({ ...adminData, user: e.target.value })}
+                      placeholder="official_01"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#000080] outline-none transition-all"
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">OTP sent to {maskedMobile}</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Secure Passkey</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input
+                      type="password"
+                      value={adminData.pass}
+                      onChange={(e) => setAdminData({ ...adminData, pass: e.target.value })}
+                      placeholder="••••••••"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#000080] outline-none transition-all"
+                    />
+                  </div>
                 </div>
               </>
             )}
@@ -316,32 +294,13 @@ const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegiste
               <span>
                 {isVerifying 
                   ? 'Processing...' 
-                  : useOtpLogin && otpStep === 'AADHAAR'
-                  ? 'Send OTP'
-                  : useOtpLogin && otpStep === 'OTP'
-                  ? 'Verify & Enter'
-                  : mode === 'VOTER' ? 'Authorize & Enter' : 'Access Command Center'}
+                  : mode === 'VOTER' 
+                    ? (otpStep === 'PHONE' ? 'Request Secure OTP' : 'Verify & Enter')
+                    : 'Access Command Center'}
               </span>
               <ArrowRight size={20} />
             </button>
           </form>
-
-          {useOtpLogin && mode === 'VOTER' && (
-            <div className="mt-4 text-center">
-              <button 
-                onClick={() => {
-                  setUseOtpLogin(false);
-                  setOtpStep('AADHAAR');
-                  setOtp('');
-                  setOtpAadhaar('');
-                  setError('');
-                }}
-                className="text-xs text-gray-500 hover:text-gray-800 font-bold uppercase tracking-widest transition-colors"
-              >
-                Use Traditional Login
-              </button>
-            </div>
-          )}
 
           <div className="mt-6 text-center">
             <button 
@@ -355,14 +314,10 @@ const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegiste
           {mode === 'VOTER' && (
             <div className="mt-8 pt-6 border-t border-gray-100">
               <p className="text-center text-xs text-gray-400 uppercase tracking-widest font-semibold mb-4">Secured Verification</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col items-center text-[#FF9933]">
-                  <div className="w-10 h-10 bg-orange-50 rounded-full flex items-center justify-center mb-1">🆔</div>
-                  <span className="text-[10px]">UIDAI Sync</span>
-                </div>
+              <div className="grid grid-cols-1 gap-4">
                  <div className="flex flex-col items-center text-[#138808]">
-                  <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mb-1">📱</div>
-                  <span className="text-[10px]">OTP Sync</span>
+                  <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mb-1">🛡️</div>
+                  <span className="text-[10px]">EPIC Verified</span>
                 </div>
               </div>
             </div>
@@ -373,6 +328,7 @@ const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegiste
           </p>
         </div>
       </div>
+      <div id="otp-timer-placeholder"></div>
     </div>
   );
 };

@@ -8,7 +8,7 @@ import AdminDashboard from './components/AdminDashboard';
 import VotingBallot from './components/VotingBallot';
 import ResultsDashboard from './components/ResultsDashboard';
 import AIAssistant from './components/AIAssistant';
-import { ViewState, Voter, Candidate, Admin, AuditLog, ElectionStatus, ElectionSchedule, ConstituencyStat } from './types';
+import { ViewState, Voter, Candidate, Admin, AuditLog, ElectionStatus, ElectionSchedule, ConstituencyStat, Election } from './types';
 import { ELECTION_SCHEDULE } from './constants';
 import { CheckCircle, Info, Vote, History, MapPin, Award, Sparkles, MessageSquare } from 'lucide-react';
 
@@ -17,6 +17,8 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<Voter | null>(null);
   const [currentAdmin, setCurrentAdmin] = useState<Admin | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [elections, setElections] = useState<Election[]>([]);
+  const [voters, setVoters] = useState<Voter[]>([]);
   const [results, setResults] = useState<{ name: string; votes: number; party: string }[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [stats, setStats] = useState<{ totalRegisteredVoters: number; totalVotesCast: number; constituencyStats: ConstituencyStat[] }>({ 
@@ -25,10 +27,33 @@ const App: React.FC = () => {
     constituencyStats: []
   });
 
+  const fetchCandidates = async () => {
+    try {
+      const res = await fetch('/api/candidates');
+      const data = await res.json();
+      setCandidates(data);
+    } catch (error) {
+      console.error("Failed to fetch candidates", error);
+    }
+  };
+
+  const fetchElections = async () => {
+    try {
+      const res = await fetch('/api/elections');
+      const data = await res.json();
+      setElections(data);
+    } catch (error) {
+      console.error("Failed to fetch elections", error);
+    }
+  };
+
   const getElectionStatus = (schedule: ElectionSchedule): ElectionStatus => {
     const now = new Date();
-    const start = new Date(schedule.startAt);
-    const end = new Date(schedule.endAt);
+    // Try to find the latest active election from dynamic data if available
+    const activeElection = elections.find(e => e.isActive) || elections[0];
+    
+    const start = activeElection ? new Date(activeElection.startAt) : new Date(schedule.startAt);
+    const end = activeElection ? new Date(activeElection.endAt) : new Date(schedule.endAt);
     const resultsAt = new Date(schedule.resultsPublishAt);
 
     const startsIn = start > now ? `${Math.ceil((start.getTime() - now.getTime()) / 3600000)}h` : 'Now';
@@ -41,9 +66,11 @@ const App: React.FC = () => {
     else if (now > end && now < resultsAt) phase = 'RESULTS_PENDING';
     else phase = 'RESULTS_PUBLISHED';
 
+    if (activeElection?.resultsPublished) phase = 'RESULTS_PUBLISHED';
+
     return {
       phase,
-      isVotingOpen: phase === 'OPEN',
+      isVotingOpen: phase === 'OPEN' && (activeElection ? activeElection.isActive : true),
       isResultsPublished: phase === 'RESULTS_PUBLISHED',
       startsIn,
       endsIn,
@@ -52,17 +79,6 @@ const App: React.FC = () => {
   };
 
   const electionStatus = getElectionStatus(ELECTION_SCHEDULE);
-
-  const fetchCandidates = async () => {
-    try {
-      const res = await fetch('/api/candidates');
-      const data = await res.json();
-      setCandidates(data);
-      setResults(data.map((c: any) => ({ name: c.name, votes: c.votes, party: c.party })));
-    } catch (error) {
-      console.error("Failed to fetch candidates", error);
-    }
-  };
 
   const fetchLogs = async () => {
     try {
@@ -74,15 +90,31 @@ const App: React.FC = () => {
     }
   };
 
+   const fetchVoters = async () => {
+     try {
+       const res = await fetch('/api/voters');
+       const data = await res.json();
+       setVoters(data);
+     } catch (error) {
+       console.error("Failed to fetch voters", error);
+     }
+   };
+
   const fetchStats = async () => {
     try {
-      const res = await fetch('/api/stats');
+      const isAdmin = currentAdmin !== null;
+      const res = await fetch(`/api/stats${isAdmin ? '?admin=true' : ''}`);
       const data = await res.json();
       setStats({
         totalRegisteredVoters: data.totalRegisteredVoters,
         totalVotesCast: data.totalVotesCast,
         constituencyStats: data.constituencyStats || []
       });
+      if (data.candidates) {
+        setResults(data.candidates.map((c: any) => ({ name: c.name, votes: c.votes, party: c.party })));
+      } else {
+        setResults(candidates.map(c => ({ name: c.name, votes: 0, party: c.party })));
+      }
     } catch (error) {
       console.error("Failed to fetch stats", error);
     }
@@ -92,13 +124,94 @@ const App: React.FC = () => {
     fetchCandidates();
     fetchLogs();
     fetchStats();
-  }, []);
+    if (currentAdmin) {
+      fetchElections();
+      fetchVoters();
+    }
+  }, [currentAdmin, candidates.length]);
+
+  const handleEditCandidate = async (candidate: Candidate) => {
+    try {
+      const res = await fetch(`/api/candidates/${candidate.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(candidate)
+      });
+      if (res.ok) {
+        fetchCandidates();
+        addLog('CANDIDATE_UPDATED', `Candidate ${candidate.name} updated.`, 'warning');
+      }
+    } catch (error) {
+      console.error("Failed to update candidate", error);
+    }
+  };
+
+  const handleUpdateVoterStatus = async (epic: string, status: Voter['status']) => {
+    try {
+      const res = await fetch(`/api/voters/${epic}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        fetchVoters();
+        fetchStats();
+        addLog('VOTER_STATUS_CHANGE', `Voter ${epic} status changed to ${status}.`, 'info');
+      }
+    } catch (error) {
+      console.error("Failed to update voter status", error);
+    }
+  };
+
+  const handleAddElection = async (election: Election) => {
+    try {
+      const res = await fetch('/api/elections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(election)
+      });
+      if (res.ok) {
+        fetchElections();
+        addLog('ELECTION_CREATED', `New election ${election.name} created.`, 'warning');
+      }
+    } catch (error) {
+      console.error("Failed to add election", error);
+    }
+  };
+
+  const handleUpdateElection = async (election: Election) => {
+    try {
+      const res = await fetch(`/api/elections/${election.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(election)
+      });
+      if (res.ok) {
+        fetchElections();
+        addLog('ELECTION_UPDATED', `Election ${election.name} updated.`, 'warning');
+      }
+    } catch (error) {
+      console.error("Failed to update election", error);
+    }
+  };
+
+  const handleDeleteElection = async (id: string) => {
+    try {
+      const res = await fetch(`/api/elections/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchElections();
+        addLog('ELECTION_DELETED', `Election ${id} removed.`, 'critical');
+      }
+    } catch (error) {
+      console.error("Failed to delete election", error);
+    }
+  };
 
   const addLog = async (action: string, details: string, severity: 'info' | 'warning' | 'critical' = 'info') => {
     // In a real app, we might want an API to add logs, but for now we'll just update local state
     // and let the server handle logs for critical actions like voting.
     const newLog: AuditLog = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).slice(2, 11),
       timestamp: new Date().toLocaleTimeString(),
       action,
       details,
@@ -107,42 +220,45 @@ const App: React.FC = () => {
     setLogs(prev => [newLog, ...prev].slice(0, 50));
   };
 
-  const handleVoterLogin = async (epic: string, aadhaar: string, pin: string) => {
+  const handleVoterLogin = async (identifier: string, pin: string) => {
     try {
-      // Handle OTP-based login differently
-      if (epic === 'OTP_AUTH') {
-        // For OTP login, find voter by Aadhaar number
-        const res = await fetch('/api/login/voter-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ aadhaar })
-        });
-        if (res.ok) {
-          const voter = await res.json();
+      // Handle Secure OTP Verified login
+      if (pin === 'OTP_VERIFIED') {
+        // Fetch full voter data using identifier (which is EPIC)
+        const res = await fetch(`/api/voters`);
+        const voters = await res.json();
+        const voter = voters.find((v: any) => v.epicNumber === identifier);
+        
+        if (voter) {
           setCurrentUser({ ...voter, isVerified: true });
           setCurrentAdmin(null);
           setCurrentView('DASHBOARD');
-          addLog('VOTER_AUTH_OTP', `Aadhaar ${aadhaar.substring(0, 4)}**** authenticated via OTP.`, 'info');
+          addLog('VOTER_AUTH_OTP', `Citizen ${voter.name} authenticated via Secure OTP.`, 'info');
         } else {
-          alert("Invalid credentials - Aadhaar not found in system");
+          alert("Login failed - Voter data not found");
         }
         return;
       }
 
-      // Regular EPIC + PIN login
+      // Regular EPIC/Mobile + PIN login (This now just triggers the process in Login.tsx)
       const res = await fetch('/api/login/voter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ epic, pin })
+        body: JSON.stringify({ identifier, pin })
       });
       if (res.ok) {
-        const voter = await res.json();
-        setCurrentUser({ ...voter, isVerified: true });
-        setCurrentAdmin(null);
-        setCurrentView('DASHBOARD');
-        addLog('VOTER_AUTH', `EPIC ${epic} authenticated.`, 'info');
+        const data = await res.json();
+        // If it requires OTP, the Login component handles it. 
+        // If it somehow returns the voter directly (legacy), handle it.
+        if (!data.requiresOtp) {
+          setCurrentUser({ ...data, isVerified: true });
+          setCurrentAdmin(null);
+          setCurrentView('DASHBOARD');
+          addLog('VOTER_AUTH', `User ${identifier} authenticated.`, 'info');
+        }
       } else {
-        alert("Invalid credentials");
+        const data = await res.json();
+        alert(data.error || "Invalid credentials");
       }
     } catch (error) {
       console.error("Login failed", error);
@@ -171,7 +287,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleVoterRegister = async (data: { name: string; epic: string; aadhaar: string; constituency: string; pin: string }) => {
+  const handleVoterRegister = async (data: { name: string; epic: string; phone: string; constituency: string; pin: string }) => {
     try {
       const res = await fetch('/api/register/voter', {
         method: 'POST',
@@ -179,17 +295,20 @@ const App: React.FC = () => {
         body: JSON.stringify(data)
       });
       if (res.ok) {
+        const result = await res.json();
+        alert(result.message);
         addLog('VOTER_REG', `New citizen registered: ${data.name}`, 'info');
         setCurrentView('LOGIN');
       } else {
-        alert("Registration failed");
+        const err = await res.json();
+        alert(err.error || "Registration failed");
       }
     } catch (error) {
       console.error("Registration failed", error);
     }
   };
 
-  const handleAdminRegister = async (data: { username: string; email: string; pass: string; role: string }) => {
+  const handleAdminRegister = async (data: { username: string; email: string; phone: string; pass: string; role: string }) => {
     try {
       const res = await fetch('/api/register/admin', {
         method: 'POST',
@@ -453,17 +572,24 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {currentView === 'ADMIN_DASHBOARD' && currentAdmin && (
-        <AdminDashboard 
-          candidates={candidates}
-          onAddCandidate={handleAddCandidate}
-          onDeleteCandidate={handleDeleteCandidate}
-          totalVoters={stats.totalRegisteredVoters}
-          votesCast={stats.totalVotesCast}
-          logs={logs}
-          constituencyStats={stats.constituencyStats}
-        />
-      )}
+      {currentView === 'ADMIN_DASHBOARD' && (
+          <AdminDashboard 
+            candidates={candidates} 
+            onAddCandidate={handleAddCandidate}
+            onEditCandidate={handleEditCandidate}
+            onDeleteCandidate={handleDeleteCandidate}
+            totalVoters={stats.totalRegisteredVoters}
+            votesCast={stats.totalVotesCast}
+            logs={logs}
+            constituencyStats={stats.constituencyStats}
+            elections={elections}
+            voters={voters}
+            onUpdateVoterStatus={handleUpdateVoterStatus}
+            onAddElection={handleAddElection}
+            onUpdateElection={handleUpdateElection}
+            onDeleteElection={handleDeleteElection}
+          />
+        )}
 
       {currentView === 'BALLOT' && currentUser && (
         <VotingBallot 
@@ -476,13 +602,14 @@ const App: React.FC = () => {
       )}
 
       {currentView === 'RESULTS' && (
-        <ResultsDashboard 
-          data={results} 
-          schedule={ELECTION_SCHEDULE}
-          electionStatus={electionStatus}
-          candidates={candidates}
-        />
-      )}
+          <ResultsDashboard 
+            data={results} 
+            schedule={ELECTION_SCHEDULE} 
+            electionStatus={electionStatus}
+            candidates={candidates}
+            isAdmin={currentAdmin !== null}
+          />
+        )}
       {currentView === 'AI_ASSISTANT' && <AIAssistant />}
     </Layout>
   );
