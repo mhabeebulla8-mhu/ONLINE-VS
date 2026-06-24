@@ -386,6 +386,21 @@ async function startServer() {
         return res.status(403).json({ error: "Account pending approval. Please wait for admin confirmation." });
       }
       
+      // Check if it's a test/mock voter (EPIC starts with TEST or VOTE)
+      const isTestVoter = voter.epicNumber.startsWith('TEST') || voter.epicNumber.startsWith('VOTE');
+      if (isTestVoter) {
+        return res.json({
+          success: true,
+          requiresOtp: false,
+          epicNumber: voter.epicNumber,
+          phoneNumber: voter.phoneNumber,
+          name: voter.name,
+          constituency: voter.constituency,
+          hasVoted: voter.hasVoted,
+          status: voter.status
+        });
+      }
+
       // Return success and let frontend trigger OTP verification
       return res.json({
          success: true,

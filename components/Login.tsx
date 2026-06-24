@@ -54,21 +54,26 @@ const Login: React.FC<LoginProps> = ({ onVoterLogin, onAdminLogin, onGoToRegiste
 
       const data = await response.json();
 
-      if (response.ok && data.requiresOtp) {
-        const phoneNumber = data.phoneNumber;
-        if (!phoneNumber) {
-          setError('Mobile number not found for this account.');
-          setIsVerifying(false);
-          return;
-        }
+      if (response.ok) {
+        if (data.requiresOtp) {
+          const phoneNumber = data.phoneNumber;
+          if (!phoneNumber) {
+            setError('Mobile number not found for this account.');
+            setIsVerifying(false);
+            return;
+          }
 
-        await sendOtp(phoneNumber);
-        
-        setMaskedPhone(data.maskedPhone);
-        setOtpPhone(phoneNumber);
-        setUseOtpLogin(true);
-        setOtpStep('OTP');
-        setResendTimer(60);
+          await sendOtp(phoneNumber);
+          
+          setMaskedPhone(data.maskedPhone);
+          setOtpPhone(phoneNumber);
+          setUseOtpLogin(true);
+          setOtpStep('OTP');
+          setResendTimer(60);
+        } else {
+          // Bypassed OTP (e.g. test voter) - log in directly
+          onVoterLogin(voterData.identifier, voterData.pin);
+        }
       } else {
         setError(data.error || 'Invalid credentials');
       }
