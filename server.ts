@@ -298,13 +298,23 @@ async function startServer() {
     }
   }
 
-  // Seed test voter if empty
+  // Seed test voters if empty (EPIC starting with TEST/VOTE bypasses OTP)
   const voterCount = await db.get("SELECT COUNT(*) as count FROM voters");
   if (voterCount.count === 0) {
-    await db.run(
-      "INSERT INTO voters (epicNumber, phoneNumber, name, constituency, pin, status, phoneVerified) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ['VOTE123456', '9876543210', 'Sample Voter', 'New Delhi', hashPin('4321'), 'APPROVED', 1]
-    );
+    const testVoters = [
+      { epic: 'VOTE123456', phone: '9876543210', name: 'Sample Voter', constituency: 'New Delhi', pin: '4321' },
+      { epic: 'TEST000001', phone: '9000000001', name: 'Aarav Patel', constituency: 'New Delhi', pin: '1111' },
+      { epic: 'TEST000002', phone: '9000000002', name: 'Priya Mehta', constituency: 'Mumbai South', pin: '2222' },
+      { epic: 'TEST000003', phone: '9000000003', name: 'Vikram Reddy', constituency: 'Bangalore Central', pin: '3333' },
+      { epic: 'TEST000004', phone: '9000000004', name: 'Anjali Nair', constituency: 'New Delhi', pin: '4444' },
+      { epic: 'TEST000005', phone: '9000000005', name: 'Rohit Gupta', constituency: 'Mumbai South', pin: '5555' },
+    ];
+    for (const v of testVoters) {
+      await db.run(
+        "INSERT INTO voters (epicNumber, phoneNumber, name, constituency, pin, status, phoneVerified) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [v.epic, v.phone, v.name, v.constituency, hashPin(v.pin), 'APPROVED', 1]
+      );
+    }
   }
 
   // Seed default election if empty
