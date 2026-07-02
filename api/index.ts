@@ -275,6 +275,14 @@ async function getDb(): Promise<Database> {
       { epic: 'TEST000003', phone: '9000000003', name: 'Vikram Reddy', constituency: 'Bangalore Central', pin: '3333' },
       { epic: 'TEST000004', phone: '9000000004', name: 'Anjali Nair', constituency: 'New Delhi', pin: '4444' },
       { epic: 'TEST000005', phone: '9000000005', name: 'Rohit Gupta', constituency: 'Mumbai South', pin: '5555' },
+      { epic: 'TEST000006', phone: '9000000006', name: 'Deepika Verma', constituency: 'Bangalore Central', pin: '6666' },
+      { epic: 'TEST000007', phone: '9000000007', name: 'Suresh Iyer', constituency: 'New Delhi', pin: '7777' },
+      { epic: 'TEST000008', phone: '9000000008', name: 'Kavitha Rao', constituency: 'Mumbai South', pin: '8888' },
+      { epic: 'TEST000009', phone: '9000000009', name: 'Manoj Tiwari', constituency: 'Bangalore Central', pin: '9999' },
+      { epic: 'TEST000010', phone: '9000000010', name: 'Fatima Sheikh', constituency: 'New Delhi', pin: '1010' },
+      { epic: 'TEST000011', phone: '9000000011', name: 'Rahul Deshmukh', constituency: 'Mumbai South', pin: '1122' },
+      { epic: 'TEST000012', phone: '9000000012', name: 'Sneha Kulkarni', constituency: 'Bangalore Central', pin: '1212' },
+      { epic: 'TEST000013', phone: '9000000013', name: 'Arun Joshi', constituency: 'New Delhi', pin: '1313' },
     ];
     for (const v of testVoters) {
       await db.run(
