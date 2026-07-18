@@ -47,7 +47,9 @@ A data-analyst-style **Election Results & Analytics Dashboard** built to transla
 * **Three visualizations**: a bar chart of turnout % by constituency, a pie chart of vote share by party, and a line chart of cumulative turnout across election-day hours.
 * **Auto-generated Key Insights** — plain-language summary sentences (e.g. highest/lowest turnout, leading party, approval split) that recompute automatically as the data changes.
 
-📁 **[View the Dashboard](./docs/BharatVote_Dashboard_v2.xlsx)**
+![BharatVote Analytics Dashboard](./docs/dashboard-preview.png)
+
+📁 **[Download the Dashboard (.xlsx)](./docs/BharatVote_Dashboard_v2.xlsx)**
 
 > Built in Excel using `SUMIFS`/`COUNTIFS`-based formulas and conditional formatting — every figure recalculates automatically if the underlying voter data is updated.
 
