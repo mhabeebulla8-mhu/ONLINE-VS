@@ -36,6 +36,23 @@ Check out the live deployment of BharatVote:
 
 ---
 
+## 📊 Analytics Dashboard
+
+A data-analyst-style **Election Results & Analytics Dashboard** built to translate raw voter and ballot data into clear, actionable insights — designed to mirror the kind of results reporting an election commission would use internally.
+
+**Highlights:**
+* **Formula-driven KPI cards** — Total Registered Voters, Total Votes Cast, Overall Turnout %, and Leading Party, all computed live from the underlying voter dataset (no hardcoded numbers).
+* **Constituency Performance table** with a red-yellow-green conditional formatting scale to instantly flag low vs. high turnout areas.
+* **Voter Approval Status breakdown** (Approved / Pending / Rejected) tracking the moderation pipeline.
+* **Three visualizations**: a bar chart of turnout % by constituency, a pie chart of vote share by party, and a line chart of cumulative turnout across election-day hours.
+* **Auto-generated Key Insights** — plain-language summary sentences (e.g. highest/lowest turnout, leading party, approval split) that recompute automatically as the data changes.
+
+📁 **[View the Dashboard](./docs/BharatVote_Dashboard_v2.xlsx)**
+
+> Built in Excel using `SUMIFS`/`COUNTIFS`-based formulas and conditional formatting — every figure recalculates automatically if the underlying voter data is updated.
+
+---
+
 ## 🏗️ Architecture & Data Flow
 
 ### Flow of a Secure Vote
